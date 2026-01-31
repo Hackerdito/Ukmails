@@ -58,6 +58,10 @@ export const removeAuthorizedUser = async (email: string) => {
   await deleteDoc(doc(db, COLLECTION_NAME, email.toLowerCase()));
 };
 
+export const deleteEmailLog = async (logId: string) => {
+  await deleteDoc(doc(db, LOGS_COLLECTION, logId));
+};
+
 export const saveEmailLog = async (logData: {
   templateName: string;
   templateId: string;

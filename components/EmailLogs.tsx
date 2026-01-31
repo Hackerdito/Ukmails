@@ -1,9 +1,14 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { db } from '../firebase';
+import { db, deleteEmailLog } from '../firebase';
 import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
+import { UserProfile } from '../types';
 
-const EmailLogs: React.FC = () => {
+interface EmailLogsProps {
+  user: UserProfile | null;
+}
+
+const EmailLogs: React.FC<EmailLogsProps> = ({ user }) => {
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +49,15 @@ const EmailLogs: React.FC = () => {
 
     return () => unsubscribe();
   }, []);
+
+  const handleDelete = async (logId: string) => {
+    if (!window.confirm('¿Estás seguro de que deseas eliminar este registro del historial?')) return;
+    try {
+      await deleteEmailLog(logId);
+    } catch (err: any) {
+      alert('Error al eliminar: ' + err.message);
+    }
+  };
 
   const stats = useMemo(() => {
     return logs.reduce((acc, log) => {
@@ -90,7 +104,7 @@ const EmailLogs: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-100 dark:divide-slate-800">
             <thead className="bg-slate-50 dark:bg-slate-800/50">
@@ -99,16 +113,17 @@ const EmailLogs: React.FC = () => {
                 <th className="px-8 py-6 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Plantilla</th>
                 <th className="px-8 py-6 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Cant.</th>
                 <th className="px-8 py-6 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Estado</th>
+                {user?.isAdmin && <th className="px-8 py-6 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Acciones</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {loading ? (
-                <tr><td colSpan={4} className="py-16 text-center font-bold text-slate-400">Consultando base de datos...</td></tr>
+                <tr><td colSpan={user?.isAdmin ? 5 : 4} className="py-16 text-center font-bold text-slate-400">Consultando base de datos...</td></tr>
               ) : logs.length === 0 ? (
-                <tr><td colSpan={4} className="py-16 text-center font-bold text-slate-400 italic">No hay logs en Firebase Data</td></tr>
+                <tr><td colSpan={user?.isAdmin ? 5 : 4} className="py-16 text-center font-bold text-slate-400 italic">No hay logs en Firebase Data</td></tr>
               ) : (
                 logs.map((log) => (
-                  <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                  <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 group">
                     <td className="px-8 py-6">
                       <div className="text-xs font-black text-slate-700 dark:text-slate-200">{log.formattedDate.toLocaleDateString()}</div>
                       <div className="text-[10px] text-slate-400 font-bold">{log.formattedDate.toLocaleTimeString()}</div>
@@ -129,6 +144,17 @@ const EmailLogs: React.FC = () => {
                         {log.status}
                       </span>
                     </td>
+                    {user?.isAdmin && (
+                      <td className="px-8 py-6 text-right whitespace-nowrap">
+                        <button
+                          onClick={() => handleDelete(log.id)}
+                          className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-950/20 transition-all opacity-0 group-hover:opacity-100"
+                          title="Eliminar Registro"
+                        >
+                          <i className="fas fa-trash-alt text-xs"></i>
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))
               )}

@@ -136,7 +136,7 @@ const App: React.FC = () => {
       isDarkMode={isDarkMode}
     >
       {activeView === 'send' && <EmailForm />}
-      {activeView === 'logs' && <EmailLogs />}
+      {activeView === 'logs' && <EmailLogs user={user} />}
       {activeView === 'admin' && <AdminPanel />}
     </Layout>
   );
