@@ -24,9 +24,31 @@ const EmailForm: React.FC = () => {
   const [csvRecipients, setCsvRecipients] = useState<string[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [cancelRequest, setCancelRequest] = useState(false);
+  
+  // Estados de progreso
+  const [progress, setProgress] = useState({
+    current: 0,
+    total: 0,
+    success: 0,
+    errors: 0,
+    percentage: 0
+  });
+
   const [status, setStatus] = useState<{ type: 'success' | 'error' | ''; message: string }>({ type: '', message: '' });
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Prevenir cierre de pestaña accidentalmente
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isSending) {
+        e.preventDefault();
+        e.returnValue = 'Hay un envío de correos en curso. Si cierras la pestaña se detendrá.';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isSending]);
 
   useEffect(() => {
     const fetchTemplates = async () => {
@@ -67,6 +89,7 @@ const EmailForm: React.FC = () => {
           const emailCol = headers.find(h => h.toLowerCase().includes('email') || h.toLowerCase().includes('correo')) || headers[0];
           const emails = results.data.map((row: any) => row[emailCol]).filter(email => email && email.includes('@'));
           setCsvRecipients(emails);
+          setProgress(prev => ({ ...prev, total: emails.length, current: 0, percentage: 0 }));
         }
       },
     });
@@ -75,7 +98,9 @@ const EmailForm: React.FC = () => {
   const handleSendEmails = async (e: React.FormEvent) => {
     e.preventDefault();
     const targets = csvRecipients.length > 0 ? csvRecipients : [formData.toEmail].filter(em => em.trim() !== '');
-    if (targets.length === 0) {
+    const total = targets.length;
+
+    if (total === 0) {
       setStatus({ type: 'error', message: 'Indica destinatarios' });
       return;
     }
@@ -83,60 +108,116 @@ const EmailForm: React.FC = () => {
     setIsSending(true);
     setCancelRequest(false);
     setStatus({ type: '', message: '' });
+    
+    let successLocal = 0;
+    let errorsLocal = 0;
 
-    let successCount = 0;
-    let finalStatus: 'success' | 'error' | 'cancelled' = 'success';
-    let errorMessage = '';
+    // Reiniciar progreso
+    setProgress({ current: 0, total, success: 0, errors: 0, percentage: 0 });
 
-    try {
-      for (const email of targets) {
-        if (cancelRequest) {
-          finalStatus = 'cancelled';
-          break;
-        }
-        try {
-          await sendEmailViaSendGrid({ ...formData, toEmail: email.trim() });
-          successCount++;
-        } catch (mailErr: any) {
-          if (targets.length === 1) {
-            finalStatus = 'error';
-            errorMessage = mailErr.message;
-            throw mailErr;
-          }
-        }
+    for (let i = 0; i < total; i++) {
+      if (cancelRequest) break;
+
+      const email = targets[i].trim();
+      
+      try {
+        await sendEmailViaSendGrid({ ...formData, toEmail: email });
+        successLocal++;
+      } catch (mailErr: any) {
+        errorsLocal++;
+        console.error(`Fallo envío a ${email}:`, mailErr.message);
       }
-      if (finalStatus === 'success') {
-        setStatus({ type: 'success', message: `¡Enviado! ${successCount} correos exitosos.` });
-      }
-    } catch (error: any) {
-      finalStatus = 'error';
-      errorMessage = error.message;
-      setStatus({ type: 'error', message: `Error: ${errorMessage}` });
-    } finally {
-      await saveEmailLog({
-        templateName: selectedTemplate.name,
-        templateId: formData.templateId,
-        count: successCount > 0 ? successCount : targets.length,
-        status: finalStatus,
-        fromEmail: formData.fromEmail,
-        error: errorMessage
+
+      // Actualizar progreso UI
+      const current = i + 1;
+      setProgress({
+        total,
+        current,
+        success: successLocal,
+        errors: errorsLocal,
+        percentage: Math.round((current / total) * 100)
       });
-      setIsSending(false);
     }
+
+    // Finalizar y Guardar Log
+    const finalStatus = cancelRequest ? 'cancelled' : (errorsLocal === total ? 'error' : 'success');
+    
+    await saveEmailLog({
+      templateName: selectedTemplate.name,
+      templateId: formData.templateId,
+      count: successLocal,
+      status: finalStatus,
+      fromEmail: formData.fromEmail,
+      error: errorsLocal > 0 ? `${errorsLocal} fallidos de ${total}` : undefined
+    });
+
+    setStatus({ 
+      type: finalStatus === 'error' ? 'error' : 'success', 
+      message: cancelRequest ? 'Envío cancelado por el usuario.' : `Proceso terminado. ${successLocal} exitosos, ${errorsLocal} errores.` 
+    });
+    
+    setIsSending(false);
   };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 max-w-6xl mx-auto">
       <div className="lg:col-span-6 space-y-6">
         <form onSubmit={handleSendEmails} className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-          <div className="bg-ukblue px-10 py-8 text-white">
+          <div className="bg-ukblue px-10 py-8 text-white relative">
             <h2 className="text-xl font-black flex items-center tracking-tighter">
               <i className="fas fa-magic mr-3 text-indigo-400"></i>
               Configurar Envío
             </h2>
+            {isSending && (
+               <div className="absolute right-10 top-1/2 -translate-y-1/2 flex items-center space-x-2">
+                  <span className="w-2 h-2 bg-emerald-400 rounded-full animate-ping"></span>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">Enviando...</span>
+               </div>
+            )}
           </div>
 
           <div className="p-10 space-y-6">
+            {/* PROGRESO - Solo se muestra al enviar */}
+            {isSending && (
+              <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-3xl border border-slate-100 dark:border-slate-700 space-y-4 animate-in fade-in zoom-in duration-300">
+                <div className="flex justify-between items-end">
+                  <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Progreso de Envío</p>
+                    <h4 className="text-2xl font-black text-ukblue dark:text-white leading-none">
+                      {progress.current} <span className="text-slate-300 dark:text-slate-600">/ {progress.total}</span>
+                    </h4>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-3xl font-black text-ukorange">{progress.percentage}%</span>
+                  </div>
+                </div>
+
+                {/* Barra de Progreso */}
+                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden p-1 shadow-inner">
+                  <div 
+                    className="h-full bg-gradient-to-r from-ukblue to-indigo-500 rounded-full transition-all duration-500 ease-out"
+                    style={{ width: `${progress.percentage}%` }}
+                  ></div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 pt-2">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Éxitos: {progress.success}</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-rose-500 rounded-full"></div>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Errores: {progress.errors}</span>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-amber-50 dark:bg-amber-950/20 rounded-xl flex items-center space-x-3">
+                   <i className="fas fa-exclamation-triangle text-amber-500 text-xs animate-pulse"></i>
+                   <p className="text-[9px] font-black text-amber-700 dark:text-amber-400 uppercase tracking-tight">Mantén esta pestaña abierta hasta completar</p>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nombre Remitente</label>
@@ -173,10 +254,12 @@ const EmailForm: React.FC = () => {
 
               {csvRecipients.length > 0 ? (
                 <div className="p-4 bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/50 rounded-2xl flex justify-between items-center">
-                  <span className="text-xs font-black text-ukblue dark:text-indigo-300 uppercase">
-                    {csvRecipients.length} contactos listos
-                  </span>
-                  <button type="button" onClick={() => setCsvRecipients([])} className="text-rose-500 font-black text-[10px]">Borrar</button>
+                  <div className="flex flex-col">
+                    <span className="text-xs font-black text-ukblue dark:text-indigo-300 uppercase">
+                      {csvRecipients.length} contactos listos
+                    </span>
+                  </div>
+                  <button type="button" onClick={() => { setCsvRecipients([]); setProgress(p => ({...p, total: 0})); }} className="text-rose-500 font-black text-[10px] hover:underline">Cambiar archivo</button>
                 </div>
               ) : (
                 <input
@@ -206,23 +289,35 @@ const EmailForm: React.FC = () => {
               </div>
             )}
 
-            <button
-              type="submit"
-              disabled={isSending || loadingTemplates}
-              className="w-full py-5 bg-ukblue hover:bg-slate-800 text-white rounded-2xl font-black text-sm uppercase tracking-widest transition-all flex items-center justify-center space-x-4 disabled:opacity-50"
-            >
-              {isSending ? <i className="fas fa-circle-notch fa-spin"></i> : <i className="fas fa-paper-plane"></i>}
-              <span>{isSending ? 'Enviando...' : 'Enviar Ahora'}</span>
-            </button>
+            <div className="flex space-x-4">
+              <button
+                type="submit"
+                disabled={isSending || loadingTemplates}
+                className="flex-1 py-5 bg-ukblue hover:bg-slate-800 text-white rounded-2xl font-black text-sm uppercase tracking-widest transition-all flex items-center justify-center space-x-4 disabled:opacity-50"
+              >
+                {isSending ? <i className="fas fa-circle-notch fa-spin"></i> : <i className="fas fa-paper-plane"></i>}
+                <span>{isSending ? 'Enviando Batch...' : 'Iniciar Envío'}</span>
+              </button>
+              
+              {isSending && (
+                <button
+                  type="button"
+                  onClick={() => setCancelRequest(true)}
+                  className="px-8 bg-rose-500 hover:bg-rose-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all"
+                >
+                  Detener
+                </button>
+              )}
+            </div>
           </div>
         </form>
       </div>
 
+      {/* VISTA PREVIA (DERECHA) */}
       <div className="lg:col-span-6">
         <div className="sticky top-28 space-y-6">
           <div className="bg-slate-200 dark:bg-slate-800 rounded-[3rem] p-2 shadow-inner">
             <div className="bg-white dark:bg-slate-950 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 overflow-hidden min-h-[500px] flex flex-col shadow-sm">
-              {/* Header Email */}
               <div className="p-8 border-b border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-transparent">
                 <div className="flex items-center space-x-4">
                   <div className="w-12 h-12 rounded-2xl bg-ukblue text-white flex items-center justify-center font-black text-lg shadow-lg">
@@ -237,7 +332,6 @@ const EmailForm: React.FC = () => {
                 </div>
               </div>
 
-              {/* Contenido Email */}
               <div className="flex-1 p-10 flex flex-col items-center justify-center text-center space-y-6 bg-white dark:bg-slate-950">
                 <div className="w-20 h-20 bg-slate-50 dark:bg-slate-900 rounded-[2rem] flex items-center justify-center border-2 border-dashed border-slate-100 dark:border-slate-800">
                   <i className="fas fa-envelope-open-text text-4xl text-ukblue/20 dark:text-indigo-500/20"></i>
@@ -249,7 +343,6 @@ const EmailForm: React.FC = () => {
                   <p className="text-[9px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-[0.2em]">SendGrid ID: {formData.templateId || 'n/a'}</p>
                 </div>
                 
-                {/* Barras de relleno estéticas */}
                 <div className="w-full space-y-3 opacity-20">
                   <div className="h-2 w-full bg-slate-200 dark:bg-slate-800 rounded-full"></div>
                   <div className="h-2 w-5/6 bg-slate-200 dark:bg-slate-800 rounded-full mx-auto"></div>
@@ -257,16 +350,15 @@ const EmailForm: React.FC = () => {
                 </div>
               </div>
 
-              {/* Footer Email */}
               <div className="p-8 text-center border-t border-slate-50 dark:border-slate-800 bg-slate-50/20 dark:bg-slate-900/10">
                 <img src="https://fileuk.netlify.app/universidaduk.png" className="h-5 mx-auto opacity-30 dark:invert mb-2" alt="UK" />
-                <p className="text-[8px] font-bold text-slate-300 dark:text-slate-700 uppercase tracking-widest">Este es un mail generado automáticamente desde el panel de Mails UK</p>
+                <p className="text-[8px] font-bold text-slate-300 dark:text-slate-700 uppercase tracking-widest">Panel de Mails UK - Universidad Uk</p>
               </div>
             </div>
           </div>
           <div className="flex items-center justify-center space-x-3 px-6 py-4 bg-emerald-50 dark:bg-emerald-950/20 rounded-2xl border border-emerald-100 dark:border-emerald-900/30">
              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-             <p className="text-[10px] font-black text-emerald-700 dark:text-emerald-400 uppercase tracking-widest">Vista previa activa</p>
+             <p className="text-[10px] font-black text-emerald-700 dark:text-emerald-400 uppercase tracking-widest">Sistema de Prevención de cierre activo</p>
           </div>
         </div>
       </div>
