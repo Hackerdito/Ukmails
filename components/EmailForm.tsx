@@ -13,7 +13,7 @@ interface SendGridTemplate {
 const EmailForm: React.FC = () => {
   const [formData, setFormData] = useState<EmailFormData>({
     fromEmail: 'info@ukuepa.com',
-    fromName: 'Uk Mails Admin',
+    fromName: 'Universidad Uk',
     toEmail: '',
     templateId: '',
     dynamicTemplateData: ''
@@ -58,7 +58,6 @@ const EmailForm: React.FC = () => {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
@@ -75,7 +74,6 @@ const EmailForm: React.FC = () => {
 
   const handleSendEmails = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     const targets = csvRecipients.length > 0 ? csvRecipients : [formData.toEmail].filter(em => em.trim() !== '');
     if (targets.length === 0) {
       setStatus({ type: 'error', message: 'Indica destinatarios' });
@@ -107,7 +105,6 @@ const EmailForm: React.FC = () => {
           }
         }
       }
-      
       if (finalStatus === 'success') {
         setStatus({ type: 'success', message: `¡Enviado! ${successCount} correos exitosos.` });
       }
@@ -116,7 +113,6 @@ const EmailForm: React.FC = () => {
       errorMessage = error.message;
       setStatus({ type: 'error', message: `Error: ${errorMessage}` });
     } finally {
-      // ESTA FUNCIÓN ES LA QUE ESCRIBE EN FIREBASE DATA
       await saveEmailLog({
         templateName: selectedTemplate.name,
         templateId: formData.templateId,
@@ -136,12 +132,12 @@ const EmailForm: React.FC = () => {
           <div className="bg-ukblue px-10 py-8 text-white">
             <h2 className="text-xl font-black flex items-center tracking-tighter">
               <i className="fas fa-magic mr-3 text-indigo-400"></i>
-              Enviar Template
+              Configurar Envío
             </h2>
           </div>
 
           <div className="p-10 space-y-6">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nombre Remitente</label>
                 <input
@@ -149,8 +145,7 @@ const EmailForm: React.FC = () => {
                   required
                   value={formData.fromName}
                   onChange={(e) => setFormData({ ...formData, fromName: e.target.value })}
-                  className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-bold dark:text-white outline-none"
-                  placeholder="Ej: Admisiones UK"
+                  className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-bold dark:text-white outline-none focus:ring-2 focus:ring-ukblue/20"
                 />
               </div>
               <div className="space-y-1">
@@ -160,7 +155,9 @@ const EmailForm: React.FC = () => {
                   required
                   value={formData.fromEmail}
                   onChange={(e) => setFormData({ ...formData, fromEmail: e.target.value })}
-                  className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-bold dark:text-white outline-none"
+                  className={`w-full px-5 py-4 border rounded-2xl outline-none text-sm font-bold dark:text-white ${
+                    !validateEmail(formData.fromEmail) ? 'border-rose-400 bg-rose-50 dark:bg-rose-950/20' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                  }`}
                 />
               </div>
             </div>
@@ -169,7 +166,7 @@ const EmailForm: React.FC = () => {
               <div className="flex justify-between items-center px-1">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Destinatarios</label>
                 <button type="button" onClick={() => fileInputRef.current?.click()} className="text-[9px] font-black text-white bg-ukblue px-4 py-2 rounded-xl">
-                  <i className="fas fa-file-csv mr-2"></i> CSV Masivo
+                  <i className="fas fa-file-csv mr-2"></i> Masivo CSV
                 </button>
                 <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".csv" className="hidden" />
               </div>
@@ -179,7 +176,7 @@ const EmailForm: React.FC = () => {
                   <span className="text-xs font-black text-ukblue dark:text-indigo-300 uppercase">
                     {csvRecipients.length} contactos listos
                   </span>
-                  <button type="button" onClick={() => setCsvRecipients([])} className="text-rose-500 font-black text-[10px]">Quitar</button>
+                  <button type="button" onClick={() => setCsvRecipients([])} className="text-rose-500 font-black text-[10px]">Borrar</button>
                 </div>
               ) : (
                 <input
@@ -193,13 +190,13 @@ const EmailForm: React.FC = () => {
             </div>
 
             <div className="space-y-1">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Plantilla</label>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Plantilla SendGrid</label>
               <select
                 value={formData.templateId}
                 onChange={(e) => setFormData({ ...formData, templateId: e.target.value })}
                 className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-black text-slate-700 dark:text-slate-200"
               >
-                {loadingTemplates ? <option>Cargando...</option> : templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                {loadingTemplates ? <option>Cargando templates...</option> : templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </div>
 
@@ -215,7 +212,7 @@ const EmailForm: React.FC = () => {
               className="w-full py-5 bg-ukblue hover:bg-slate-800 text-white rounded-2xl font-black text-sm uppercase tracking-widest transition-all flex items-center justify-center space-x-4 disabled:opacity-50"
             >
               {isSending ? <i className="fas fa-circle-notch fa-spin"></i> : <i className="fas fa-paper-plane"></i>}
-              <span>{isSending ? 'Enviando Batch...' : 'Enviar Ahora'}</span>
+              <span>{isSending ? 'Enviando...' : 'Enviar Ahora'}</span>
             </button>
           </div>
         </form>
@@ -223,37 +220,53 @@ const EmailForm: React.FC = () => {
 
       <div className="lg:col-span-6">
         <div className="sticky top-28 space-y-6">
-          <div className="bg-slate-200 dark:bg-slate-800 rounded-[3rem] p-2">
-            <div className="bg-white dark:bg-slate-950 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 overflow-hidden min-h-[480px] flex flex-col">
-              <div className="p-8 border-b border-slate-100 dark:border-slate-800">
+          <div className="bg-slate-200 dark:bg-slate-800 rounded-[3rem] p-2 shadow-inner">
+            <div className="bg-white dark:bg-slate-950 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 overflow-hidden min-h-[500px] flex flex-col shadow-sm">
+              {/* Header Email */}
+              <div className="p-8 border-b border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-transparent">
                 <div className="flex items-center space-x-4">
-                  <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center text-ukblue dark:text-indigo-300 font-bold">
+                  <div className="w-12 h-12 rounded-2xl bg-ukblue text-white flex items-center justify-center font-black text-lg shadow-lg">
                     {formData.fromName.charAt(0)}
                   </div>
                   <div className="flex-1">
-                    <p className="text-sm font-black text-slate-900 dark:text-white">{formData.fromName || 'Uk Admin'}</p>
-                    <p className="text-[10px] text-slate-400 font-bold">Para: {csvRecipients.length > 0 ? `${csvRecipients.length} contactos` : (formData.toEmail || 'destinatario@correo.com')}</p>
+                    <p className="text-sm font-black text-slate-900 dark:text-white">{formData.fromName || 'Remitente'}</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{formData.fromEmail}</p>
+                    <div className="mt-2 h-px w-full bg-slate-100 dark:bg-slate-800"></div>
+                    <p className="mt-2 text-[10px] text-slate-400 font-bold">Para: <span className="text-ukblue dark:text-indigo-400 font-black">{csvRecipients.length > 0 ? `${csvRecipients.length} destinatarios` : (formData.toEmail || 'destinatario@correo.com')}</span></p>
                   </div>
                 </div>
               </div>
 
-              <div className="flex-1 p-10 flex flex-col items-center justify-center text-center space-y-4">
-                <i className="fas fa-envelope-open-text text-5xl text-ukblue/10 dark:text-white/10"></i>
-                <div>
-                  <h4 className="text-lg font-black text-ukblue dark:text-indigo-400">{selectedTemplate.name}</h4>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-2">ID: {formData.templateId || 'Sin seleccionar'}</p>
+              {/* Contenido Email */}
+              <div className="flex-1 p-10 flex flex-col items-center justify-center text-center space-y-6 bg-white dark:bg-slate-950">
+                <div className="w-20 h-20 bg-slate-50 dark:bg-slate-900 rounded-[2rem] flex items-center justify-center border-2 border-dashed border-slate-100 dark:border-slate-800">
+                  <i className="fas fa-envelope-open-text text-4xl text-ukblue/20 dark:text-indigo-500/20"></i>
                 </div>
-                <div className="w-full max-w-[200px] h-2 bg-slate-100 dark:bg-slate-800 rounded-full"></div>
-                <div className="w-full max-w-[150px] h-2 bg-slate-100 dark:bg-slate-800 rounded-full"></div>
+                <div className="space-y-2">
+                  <h4 className="text-xl font-black text-ukblue dark:text-indigo-300 tracking-tight leading-tight">
+                    {selectedTemplate.name}
+                  </h4>
+                  <p className="text-[9px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-[0.2em]">SendGrid ID: {formData.templateId || 'n/a'}</p>
+                </div>
+                
+                {/* Barras de relleno estéticas */}
+                <div className="w-full space-y-3 opacity-20">
+                  <div className="h-2 w-full bg-slate-200 dark:bg-slate-800 rounded-full"></div>
+                  <div className="h-2 w-5/6 bg-slate-200 dark:bg-slate-800 rounded-full mx-auto"></div>
+                  <div className="h-2 w-4/6 bg-slate-200 dark:bg-slate-800 rounded-full mx-auto"></div>
+                </div>
               </div>
 
-              <div className="p-8 text-center border-t border-slate-50 dark:border-slate-800">
-                <img src="https://fileuk.netlify.app/universidaduk.png" className="h-4 mx-auto opacity-30 dark:invert" alt="Uk" />
+              {/* Footer Email */}
+              <div className="p-8 text-center border-t border-slate-50 dark:border-slate-800 bg-slate-50/20 dark:bg-slate-900/10">
+                <img src="https://fileuk.netlify.app/universidaduk.png" className="h-5 mx-auto opacity-30 dark:invert mb-2" alt="UK" />
+                <p className="text-[8px] font-bold text-slate-300 dark:text-slate-700 uppercase tracking-widest">Este es un mail generado automáticamente desde el panel de Mails UK</p>
               </div>
             </div>
           </div>
-          <div className="p-6 bg-ukblue/5 dark:bg-indigo-950/20 rounded-3xl border border-ukblue/10 dark:border-indigo-500/10 text-center">
-             <p className="text-[10px] font-black text-ukblue dark:text-indigo-400 uppercase">Vista previa en tiempo real</p>
+          <div className="flex items-center justify-center space-x-3 px-6 py-4 bg-emerald-50 dark:bg-emerald-950/20 rounded-2xl border border-emerald-100 dark:border-emerald-900/30">
+             <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+             <p className="text-[10px] font-black text-emerald-700 dark:text-emerald-400 uppercase tracking-widest">Vista previa activa</p>
           </div>
         </div>
       </div>

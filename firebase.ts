@@ -16,7 +16,7 @@ import {
 } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAJpDIs[...]", // Usando la config ya existente
+  apiKey: "AIzaSyAJpDIsjfgY70m87mg74y3oaEElkyTvyM0",
   authDomain: "ukmails-45f8c.firebaseapp.com",
   projectId: "ukmails-45f8c",
   storageBucket: "ukmails-45f8c.firebasestorage.app",
@@ -58,10 +58,6 @@ export const removeAuthorizedUser = async (email: string) => {
   await deleteDoc(doc(db, COLLECTION_NAME, email.toLowerCase()));
 };
 
-/**
- * Guarda el log usando setDoc con ID manual para máxima fiabilidad.
- * Esto garantiza que aparezca en el panel de Firebase Data.
- */
 export const saveEmailLog = async (logData: {
   templateName: string;
   templateId: string;
@@ -72,7 +68,6 @@ export const saveEmailLog = async (logData: {
 }) => {
   try {
     const user = auth.currentUser;
-    // Generamos un ID manual basado en tiempo para asegurar el guardado
     const logId = `log_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     
     const docData = {
@@ -84,21 +79,16 @@ export const saveEmailLog = async (logData: {
       error: logData.error || "",
       userEmail: user?.email || 'sistema@ukuepa.com',
       userUid: user?.uid || 'system',
-      timestamp: Date.now(), // Numérico para respaldo
-      dbTimestamp: serverTimestamp(), // Oficial de Firebase
+      timestamp: Date.now(),
+      dbTimestamp: serverTimestamp(),
       createdAt: new Date().toISOString()
     };
     
-    console.log("Intentando guardar log en Firebase:", logId, docData);
-    
-    // Usamos setDoc en lugar de addDoc para forzar la creación con nuestro ID
     const docRef = doc(db, LOGS_COLLECTION, logId);
     await setDoc(docRef, docData);
-    
-    console.log("Log guardado con ÉXITO en Firebase Data.");
     return true;
   } catch (e: any) {
-    console.error("ERROR CRÍTICO al guardar en Firestore:", e.message);
+    console.error("Error saving log:", e.message);
     return false;
   }
 };
