@@ -24,6 +24,7 @@ const EmailForm: React.FC = () => {
   const [csvRecipients, setCsvRecipients] = useState<string[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [cancelRequest, setCancelRequest] = useState(false);
+  const [currentProcessingEmail, setCurrentProcessingEmail] = useState('');
   
   // Estados de progreso
   const [progress, setProgress] = useState({
@@ -38,12 +39,21 @@ const EmailForm: React.FC = () => {
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Parse manual emails from string
+  const manualEmails = useMemo(() => {
+    if (!formData.toEmail) return [];
+    return formData.toEmail
+      .split(/[,;\s\n]+/)
+      .map(e => e.trim())
+      .filter(e => e !== '' && e.includes('@'));
+  }, [formData.toEmail]);
+
   // Prevenir cierre de pestaña accidentalmente
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (isSending) {
         e.preventDefault();
-        e.returnValue = 'Hay un envío de correos en curso. Si cierras la pestaña se detendrá.';
+        e.returnValue = '¡Atención! Hay un envío masivo en curso. Si cierras ahora, el proceso se detendrá.';
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
@@ -75,7 +85,7 @@ const EmailForm: React.FC = () => {
     templates.find(t => t.id === formData.templateId) || { name: 'Selecciona una plantilla', id: formData.templateId }
   , [formData.templateId, templates]);
 
-  const validateEmail = (email: string) => email && email.toLowerCase().endsWith('@ukuepa.com');
+  const validateFromEmail = (email: string) => email && email.toLowerCase().endsWith('@ukuepa.com');
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -90,6 +100,8 @@ const EmailForm: React.FC = () => {
           const emails = results.data.map((row: any) => row[emailCol]).filter(email => email && email.includes('@'));
           setCsvRecipients(emails);
           setProgress(prev => ({ ...prev, total: emails.length, current: 0, percentage: 0 }));
+          // Clear manual input if CSV is uploaded to avoid confusion
+          setFormData(prev => ({ ...prev, toEmail: '' }));
         }
       },
     });
@@ -97,11 +109,11 @@ const EmailForm: React.FC = () => {
 
   const handleSendEmails = async (e: React.FormEvent) => {
     e.preventDefault();
-    const targets = csvRecipients.length > 0 ? csvRecipients : [formData.toEmail].filter(em => em.trim() !== '');
+    const targets = csvRecipients.length > 0 ? csvRecipients : manualEmails;
     const total = targets.length;
 
     if (total === 0) {
-      setStatus({ type: 'error', message: 'Indica destinatarios' });
+      setStatus({ type: 'error', message: 'Indica al menos un destinatario válido' });
       return;
     }
 
@@ -119,6 +131,7 @@ const EmailForm: React.FC = () => {
       if (cancelRequest) break;
 
       const email = targets[i].trim();
+      setCurrentProcessingEmail(email);
       
       try {
         await sendEmailViaSendGrid({ ...formData, toEmail: email });
@@ -128,7 +141,7 @@ const EmailForm: React.FC = () => {
         console.error(`Fallo envío a ${email}:`, mailErr.message);
       }
 
-      // Actualizar progreso UI
+      // Actualizar progreso UI inmediatamente
       const current = i + 1;
       setProgress({
         total,
@@ -139,7 +152,6 @@ const EmailForm: React.FC = () => {
       });
     }
 
-    // Finalizar y Guardar Log
     const finalStatus = cancelRequest ? 'cancelled' : (errorsLocal === total ? 'error' : 'success');
     
     await saveEmailLog({
@@ -153,10 +165,11 @@ const EmailForm: React.FC = () => {
 
     setStatus({ 
       type: finalStatus === 'error' ? 'error' : 'success', 
-      message: cancelRequest ? 'Envío cancelado por el usuario.' : `Proceso terminado. ${successLocal} exitosos, ${errorsLocal} errores.` 
+      message: cancelRequest ? 'Envío detenido manualmente.' : `Proceso completo: ${successLocal} enviados con éxito.` 
     });
     
     setIsSending(false);
+    setCurrentProcessingEmail('');
   };
 
   return (
@@ -168,52 +181,56 @@ const EmailForm: React.FC = () => {
               <i className="fas fa-magic mr-3 text-indigo-400"></i>
               Configurar Envío
             </h2>
-            {isSending && (
-               <div className="absolute right-10 top-1/2 -translate-y-1/2 flex items-center space-x-2">
-                  <span className="w-2 h-2 bg-emerald-400 rounded-full animate-ping"></span>
-                  <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">Enviando...</span>
-               </div>
-            )}
           </div>
 
           <div className="p-10 space-y-6">
-            {/* PROGRESO - Solo se muestra al enviar */}
+            {/* SISTEMA DE PROGRESO MEJORADO */}
             {isSending && (
-              <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-3xl border border-slate-100 dark:border-slate-700 space-y-4 animate-in fade-in zoom-in duration-300">
-                <div className="flex justify-between items-end">
-                  <div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Progreso de Envío</p>
-                    <h4 className="text-2xl font-black text-ukblue dark:text-white leading-none">
-                      {progress.current} <span className="text-slate-300 dark:text-slate-600">/ {progress.total}</span>
-                    </h4>
+              <div className="bg-slate-50 dark:bg-slate-800/40 p-8 rounded-[2rem] border-2 border-ukblue/5 dark:border-indigo-500/10 space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
+                <div className="flex justify-between items-start">
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Estado del Lote</p>
+                    <div className="flex items-baseline space-x-2">
+                      <h4 className="text-4xl font-black text-ukblue dark:text-white leading-none tabular-nums">
+                        {progress.current}
+                      </h4>
+                      <span className="text-sm font-bold text-slate-300 dark:text-slate-600 uppercase">de {progress.total}</span>
+                    </div>
                   </div>
                   <div className="text-right">
-                    <span className="text-3xl font-black text-ukorange">{progress.percentage}%</span>
+                    <p className="text-[10px] font-black text-ukorange uppercase tracking-widest mb-1">Completado</p>
+                    <span className="text-5xl font-black text-ukorange tabular-nums">{progress.percentage}%</span>
                   </div>
                 </div>
 
-                {/* Barra de Progreso */}
-                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden p-1 shadow-inner">
-                  <div 
-                    className="h-full bg-gradient-to-r from-ukblue to-indigo-500 rounded-full transition-all duration-500 ease-out"
-                    style={{ width: `${progress.percentage}%` }}
-                  ></div>
+                {/* Barra de Progreso Mejorada */}
+                <div className="space-y-2">
+                  <div className="h-6 bg-slate-200 dark:bg-slate-700/50 rounded-2xl overflow-hidden p-1.5 shadow-inner relative">
+                    <div 
+                      className="h-full bg-gradient-to-r from-ukblue via-indigo-600 to-indigo-400 rounded-xl transition-all duration-700 ease-out relative shadow-lg"
+                      style={{ width: `${progress.percentage}%` }}
+                    >
+                      <div className="absolute inset-0 bg-white/20 animate-[pulse_2s_infinite]"></div>
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center px-1">
+                    <p className="text-[9px] font-black text-slate-400 uppercase truncate max-w-[70%]">
+                      <i className="fas fa-spinner fa-spin mr-2"></i> Procesando: <span className="text-slate-600 dark:text-slate-300 lowercase">{currentProcessingEmail}</span>
+                    </p>
+                    <div className="flex space-x-3">
+                       <span className="text-[9px] font-black text-emerald-600">✓ {progress.success}</span>
+                       <span className="text-[9px] font-black text-rose-500">✕ {progress.errors}</span>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 pt-2">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Éxitos: {progress.success}</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-rose-500 rounded-full"></div>
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Errores: {progress.errors}</span>
-                  </div>
-                </div>
-
-                <div className="p-3 bg-amber-50 dark:bg-amber-950/20 rounded-xl flex items-center space-x-3">
-                   <i className="fas fa-exclamation-triangle text-amber-500 text-xs animate-pulse"></i>
-                   <p className="text-[9px] font-black text-amber-700 dark:text-amber-400 uppercase tracking-tight">Mantén esta pestaña abierta hasta completar</p>
+                <div className="p-4 bg-ukblue/5 dark:bg-indigo-950/20 rounded-2xl flex items-center space-x-4 border border-ukblue/10">
+                   <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center shadow-sm">
+                      <i className="fas fa-lock text-ukblue dark:text-indigo-400 animate-pulse"></i>
+                   </div>
+                   <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase leading-relaxed">
+                     Panel protegido. No cierres el navegador para garantizar que todos los correos se entreguen.
+                   </p>
                 </div>
               </div>
             )}
@@ -230,14 +247,14 @@ const EmailForm: React.FC = () => {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email (@ukuepa.com)</label>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email Remitente</label>
                 <input
                   type="email"
                   required
                   value={formData.fromEmail}
                   onChange={(e) => setFormData({ ...formData, fromEmail: e.target.value })}
-                  className={`w-full px-5 py-4 border rounded-2xl outline-none text-sm font-bold dark:text-white ${
-                    !validateEmail(formData.fromEmail) ? 'border-rose-400 bg-rose-50 dark:bg-rose-950/20' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                  className={`w-full px-5 py-4 border rounded-2xl outline-none text-sm font-bold dark:text-white transition-all ${
+                    !validateFromEmail(formData.fromEmail) ? 'border-rose-400 bg-rose-50 dark:bg-rose-950/20' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 focus:border-ukblue'
                   }`}
                 />
               </div>
@@ -246,64 +263,89 @@ const EmailForm: React.FC = () => {
             <div className="space-y-3">
               <div className="flex justify-between items-center px-1">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Destinatarios</label>
-                <button type="button" onClick={() => fileInputRef.current?.click()} className="text-[9px] font-black text-white bg-ukblue px-4 py-2 rounded-xl">
-                  <i className="fas fa-file-csv mr-2"></i> Masivo CSV
-                </button>
-                <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".csv" className="hidden" />
+                <div className="flex space-x-2">
+                  <button type="button" onClick={() => fileInputRef.current?.click()} className="text-[9px] font-black text-white bg-ukblue hover:bg-slate-800 px-5 py-2.5 rounded-xl transition-all shadow-md active:scale-95">
+                    <i className="fas fa-file-csv mr-2"></i> Cargar CSV
+                  </button>
+                  <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".csv" className="hidden" />
+                </div>
               </div>
 
               {csvRecipients.length > 0 ? (
-                <div className="p-4 bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/50 rounded-2xl flex justify-between items-center">
-                  <div className="flex flex-col">
-                    <span className="text-xs font-black text-ukblue dark:text-indigo-300 uppercase">
-                      {csvRecipients.length} contactos listos
+                <div className="p-5 bg-indigo-50 dark:bg-indigo-950/20 border-2 border-indigo-100 dark:border-indigo-900/50 rounded-2xl flex justify-between items-center shadow-sm">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center">
+                       <i className="fas fa-users text-xs"></i>
+                    </div>
+                    <span className="text-xs font-black text-ukblue dark:text-indigo-300 uppercase tracking-tight">
+                      {csvRecipients.length} contactos del CSV listos
                     </span>
                   </div>
-                  <button type="button" onClick={() => { setCsvRecipients([]); setProgress(p => ({...p, total: 0})); }} className="text-rose-500 font-black text-[10px] hover:underline">Cambiar archivo</button>
+                  <button type="button" onClick={() => { setCsvRecipients([]); setProgress(p => ({...p, total: 0})); }} className="text-rose-500 font-black text-[10px] hover:bg-rose-50 p-2 rounded-lg transition-all uppercase">Eliminar</button>
                 </div>
               ) : (
-                <input
-                  type="email"
-                  value={formData.toEmail}
-                  onChange={(e) => setFormData({ ...formData, toEmail: e.target.value })}
-                  className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-bold dark:text-white outline-none"
-                  placeholder="ejemplo@correo.com"
-                />
+                <div className="space-y-2">
+                  <div className="relative">
+                    <textarea
+                      value={formData.toEmail}
+                      onChange={(e) => setFormData({ ...formData, toEmail: e.target.value })}
+                      className="w-full pl-12 pr-5 py-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-bold dark:text-white outline-none focus:border-ukblue transition-all min-h-[100px] resize-none"
+                      placeholder="Escribe correos separados por coma, espacio o enter..."
+                    />
+                    <i className="fas fa-at absolute left-5 top-6 text-slate-300"></i>
+                  </div>
+                  {manualEmails.length > 0 && (
+                    <div className="flex items-center justify-between px-2">
+                      <p className="text-[10px] font-black text-ukblue dark:text-indigo-400 uppercase tracking-widest">
+                        {manualEmails.length} correos detectados manualmente
+                      </p>
+                      <button type="button" onClick={() => setFormData({...formData, toEmail: ''})} className="text-[9px] font-black text-rose-500 uppercase hover:underline">Limpiar</button>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 
             <div className="space-y-1">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Plantilla SendGrid</label>
-              <select
-                value={formData.templateId}
-                onChange={(e) => setFormData({ ...formData, templateId: e.target.value })}
-                className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-black text-slate-700 dark:text-slate-200"
-              >
-                {loadingTemplates ? <option>Cargando templates...</option> : templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
+              <div className="relative">
+                <select
+                  value={formData.templateId}
+                  onChange={(e) => setFormData({ ...formData, templateId: e.target.value })}
+                  className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-black text-slate-700 dark:text-slate-200 outline-none appearance-none focus:border-ukblue transition-all"
+                >
+                  {loadingTemplates ? <option>Cargando templates...</option> : templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+                <i className="fas fa-chevron-down absolute right-5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"></i>
+              </div>
             </div>
 
             {status.message && (
-              <div className={`p-4 rounded-2xl text-xs font-black ${status.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
-                {status.message}
+              <div className={`p-5 rounded-2xl text-[11px] font-black uppercase tracking-tight flex items-center space-x-3 ${status.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-rose-50 text-rose-700 border border-rose-100'}`}>
+                <i className={`fas ${status.type === 'success' ? 'fa-check-circle' : 'fa-times-circle'}`}></i>
+                <span>{status.message}</span>
               </div>
             )}
 
-            <div className="flex space-x-4">
+            <div className="flex space-x-4 pt-2">
               <button
                 type="submit"
                 disabled={isSending || loadingTemplates}
-                className="flex-1 py-5 bg-ukblue hover:bg-slate-800 text-white rounded-2xl font-black text-sm uppercase tracking-widest transition-all flex items-center justify-center space-x-4 disabled:opacity-50"
+                className="flex-1 py-5 bg-ukblue hover:bg-slate-800 text-white rounded-[1.5rem] font-black text-xs uppercase tracking-[0.2em] transition-all flex items-center justify-center space-x-4 disabled:opacity-50 shadow-xl active:scale-95"
               >
-                {isSending ? <i className="fas fa-circle-notch fa-spin"></i> : <i className="fas fa-paper-plane"></i>}
-                <span>{isSending ? 'Enviando Batch...' : 'Iniciar Envío'}</span>
+                {isSending ? <i className="fas fa-circle-notch fa-spin"></i> : <i className="fas fa-bolt"></i>}
+                <span>{isSending ? 'Procesando Lote...' : 'Lanzar Campaña'}</span>
               </button>
               
               {isSending && (
                 <button
                   type="button"
-                  onClick={() => setCancelRequest(true)}
-                  className="px-8 bg-rose-500 hover:bg-rose-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all"
+                  onClick={() => {
+                    if (window.confirm('¿Detener el envío? Los correos ya procesados no podrán recuperarse.')) {
+                      setCancelRequest(true);
+                    }
+                  }}
+                  className="px-8 bg-rose-500 hover:bg-rose-600 text-white rounded-[1.5rem] font-black text-[10px] uppercase tracking-widest transition-all shadow-lg active:scale-95"
                 >
                   Detener
                 </button>
@@ -313,52 +355,67 @@ const EmailForm: React.FC = () => {
         </form>
       </div>
 
-      {/* VISTA PREVIA (DERECHA) */}
+      {/* VISTA PREVIA MEJORADA */}
       <div className="lg:col-span-6">
         <div className="sticky top-28 space-y-6">
-          <div className="bg-slate-200 dark:bg-slate-800 rounded-[3rem] p-2 shadow-inner">
-            <div className="bg-white dark:bg-slate-950 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 overflow-hidden min-h-[500px] flex flex-col shadow-sm">
-              <div className="p-8 border-b border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-transparent">
-                <div className="flex items-center space-x-4">
-                  <div className="w-12 h-12 rounded-2xl bg-ukblue text-white flex items-center justify-center font-black text-lg shadow-lg">
-                    {formData.fromName.charAt(0)}
+          <div className="bg-slate-200 dark:bg-slate-800 rounded-[3rem] p-2 shadow-inner group">
+            <div className="bg-white dark:bg-slate-950 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 overflow-hidden min-h-[520px] flex flex-col shadow-sm transition-all group-hover:shadow-xl">
+              <div className="p-10 border-b border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-transparent">
+                <div className="flex items-center space-x-5">
+                  <div className="w-14 h-14 rounded-2xl bg-ukblue text-white flex items-center justify-center font-black text-xl shadow-lg transform transition-transform group-hover:scale-110">
+                    {formData.fromName.charAt(0) || 'U'}
                   </div>
                   <div className="flex-1">
-                    <p className="text-sm font-black text-slate-900 dark:text-white">{formData.fromName || 'Remitente'}</p>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{formData.fromEmail}</p>
-                    <div className="mt-2 h-px w-full bg-slate-100 dark:bg-slate-800"></div>
-                    <p className="mt-2 text-[10px] text-slate-400 font-bold">Para: <span className="text-ukblue dark:text-indigo-400 font-black">{csvRecipients.length > 0 ? `${csvRecipients.length} destinatarios` : (formData.toEmail || 'destinatario@correo.com')}</span></p>
+                    <p className="text-base font-black text-slate-900 dark:text-white leading-none mb-1">{formData.fromName || 'Universidad Uk'}</p>
+                    <p className="text-[11px] text-slate-400 font-bold uppercase tracking-widest leading-none">{formData.fromEmail}</p>
+                    <div className="mt-4 h-px w-full bg-slate-100 dark:bg-slate-800"></div>
+                    <div className="mt-3 flex items-center space-x-2">
+                       <span className="text-[10px] text-slate-400 font-bold">Para:</span>
+                       <span className="text-[10px] text-ukblue dark:text-indigo-400 font-black truncate max-w-[200px]">
+                         {csvRecipients.length > 0 ? `${csvRecipients.length} contactos del archivo` : (manualEmails.length > 0 ? `${manualEmails.length} contactos manuales` : 'destinatario@correo.com')}
+                       </span>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="flex-1 p-10 flex flex-col items-center justify-center text-center space-y-6 bg-white dark:bg-slate-950">
-                <div className="w-20 h-20 bg-slate-50 dark:bg-slate-900 rounded-[2rem] flex items-center justify-center border-2 border-dashed border-slate-100 dark:border-slate-800">
-                  <i className="fas fa-envelope-open-text text-4xl text-ukblue/20 dark:text-indigo-500/20"></i>
+              <div className="flex-1 p-12 flex flex-col items-center justify-center text-center space-y-8 bg-white dark:bg-slate-950">
+                <div className="w-24 h-24 bg-slate-50 dark:bg-slate-900 rounded-[2.5rem] flex items-center justify-center border-2 border-dashed border-slate-200 dark:border-slate-800 relative">
+                  <i className="fas fa-envelope-open-text text-5xl text-ukblue/10 dark:text-indigo-500/20"></i>
+                  {isSending && (
+                     <div className="absolute -top-2 -right-2 w-8 h-8 bg-ukorange rounded-full flex items-center justify-center shadow-lg border-2 border-white dark:border-slate-900">
+                        <i className="fas fa-paper-plane text-white text-[10px] animate-bounce"></i>
+                     </div>
+                  )}
                 </div>
-                <div className="space-y-2">
-                  <h4 className="text-xl font-black text-ukblue dark:text-indigo-300 tracking-tight leading-tight">
+                <div className="space-y-3">
+                  <h4 className="text-2xl font-black text-ukblue dark:text-indigo-300 tracking-tight leading-tight">
                     {selectedTemplate.name}
                   </h4>
-                  <p className="text-[9px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-[0.2em]">SendGrid ID: {formData.templateId || 'n/a'}</p>
+                  <div className="inline-flex items-center px-4 py-1 bg-slate-50 dark:bg-slate-900 rounded-full border border-slate-100 dark:border-slate-800">
+                    <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.1em]">SendGrid ID: {formData.templateId || 'N/A'}</span>
+                  </div>
                 </div>
                 
                 <div className="w-full space-y-3 opacity-20">
-                  <div className="h-2 w-full bg-slate-200 dark:bg-slate-800 rounded-full"></div>
-                  <div className="h-2 w-5/6 bg-slate-200 dark:bg-slate-800 rounded-full mx-auto"></div>
-                  <div className="h-2 w-4/6 bg-slate-200 dark:bg-slate-800 rounded-full mx-auto"></div>
+                  <div className="h-2.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full"></div>
+                  <div className="h-2.5 w-5/6 bg-slate-100 dark:bg-slate-800 rounded-full mx-auto"></div>
+                  <div className="h-2.5 w-4/6 bg-slate-100 dark:bg-slate-800 rounded-full mx-auto"></div>
                 </div>
               </div>
 
-              <div className="p-8 text-center border-t border-slate-50 dark:border-slate-800 bg-slate-50/20 dark:bg-slate-900/10">
-                <img src="https://fileuk.netlify.app/universidaduk.png" className="h-5 mx-auto opacity-30 dark:invert mb-2" alt="UK" />
-                <p className="text-[8px] font-bold text-slate-300 dark:text-slate-700 uppercase tracking-widest">Panel de Mails UK - Universidad Uk</p>
+              <div className="p-10 text-center border-t border-slate-50 dark:border-slate-800 bg-slate-50/20 dark:bg-slate-900/10">
+                <img src="https://fileuk.netlify.app/universidaduk.png" className="h-6 mx-auto opacity-40 dark:invert mb-3" alt="UK" />
+                <p className="text-[9px] font-bold text-slate-300 dark:text-slate-700 uppercase tracking-[0.2em]">Panel Oficial de Comunicaciones UK</p>
               </div>
             </div>
           </div>
-          <div className="flex items-center justify-center space-x-3 px-6 py-4 bg-emerald-50 dark:bg-emerald-950/20 rounded-2xl border border-emerald-100 dark:border-emerald-900/30">
-             <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-             <p className="text-[10px] font-black text-emerald-700 dark:text-emerald-400 uppercase tracking-widest">Sistema de Prevención de cierre activo</p>
+          <div className="flex items-center justify-center space-x-4 px-8 py-5 bg-emerald-50 dark:bg-emerald-950/20 rounded-[2rem] border border-emerald-100 dark:border-emerald-900/30 shadow-sm">
+             <div className="relative">
+                <div className="w-3 h-3 bg-emerald-500 rounded-full"></div>
+                <div className="absolute inset-0 w-3 h-3 bg-emerald-500 rounded-full animate-ping"></div>
+             </div>
+             <p className="text-[11px] font-black text-emerald-700 dark:text-emerald-400 uppercase tracking-widest">Monitoreo de Envío en Tiempo Real</p>
           </div>
         </div>
       </div>
