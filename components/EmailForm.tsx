@@ -60,24 +60,27 @@ const EmailForm: React.FC = () => {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [isSending]);
 
-  useEffect(() => {
-    const fetchTemplates = async () => {
-      try {
-        const response = await fetch('/api/get-templates');
-        if (!response.ok) throw new Error("Error API");
-        const data = await response.json();
-        if (Array.isArray(data)) {
-          setTemplates(data);
-          if (data.length > 0) {
-            setFormData(prev => ({ ...prev, templateId: data[0].id }));
-          }
+  const fetchTemplates = async () => {
+    setLoadingTemplates(true);
+    try {
+      const response = await fetch('/api/get-templates');
+      if (!response.ok) throw new Error("Error API");
+      const data = await response.json();
+      if (Array.isArray(data)) {
+        setTemplates(data);
+        // Solo asignamos el primer template si no hay uno seleccionado ya
+        if (data.length > 0 && !formData.templateId) {
+          setFormData(prev => ({ ...prev, templateId: data[0].id }));
         }
-      } catch (err) {
-        console.error("Error al cargar templates:", err);
-      } finally {
-        setLoadingTemplates(false);
       }
-    };
+    } catch (err) {
+      console.error("Error al cargar templates:", err);
+    } finally {
+      setLoadingTemplates(false);
+    }
+  };
+
+  useEffect(() => {
     fetchTemplates();
   }, []);
 
@@ -307,14 +310,30 @@ const EmailForm: React.FC = () => {
             </div>
 
             <div className="space-y-1">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Plantilla SendGrid</label>
+              <div className="flex justify-between items-center px-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Plantilla SendGrid</label>
+                <button 
+                  type="button" 
+                  onClick={fetchTemplates}
+                  disabled={loadingTemplates}
+                  className="text-[10px] text-ukblue dark:text-indigo-400 hover:text-ukorange transition-all flex items-center space-x-2 font-black uppercase tracking-tighter disabled:opacity-50"
+                  title="Actualizar plantillas"
+                >
+                  <i className={`fas fa-sync-alt ${loadingTemplates ? 'fa-spin' : ''}`}></i>
+                  <span>Actualizar</span>
+                </button>
+              </div>
               <div className="relative">
                 <select
                   value={formData.templateId}
                   onChange={(e) => setFormData({ ...formData, templateId: e.target.value })}
                   className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-black text-slate-700 dark:text-slate-200 outline-none appearance-none focus:border-ukblue transition-all"
                 >
-                  {loadingTemplates ? <option>Cargando templates...</option> : templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  {loadingTemplates && templates.length === 0 ? (
+                    <option>Cargando templates...</option>
+                  ) : (
+                    templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)
+                  )}
                 </select>
                 <i className="fas fa-chevron-down absolute right-5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"></i>
               </div>

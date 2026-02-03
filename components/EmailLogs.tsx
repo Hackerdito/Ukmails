@@ -12,9 +12,9 @@ const EmailLogs: React.FC<EmailLogsProps> = ({ user }) => {
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
-    // Escuchamos por timestamp numérico para evitar problemas con serverTimestamp incompleto
     const q = query(
       collection(db, 'email_logs'),
       orderBy('timestamp', 'desc'),
@@ -43,7 +43,7 @@ const EmailLogs: React.FC<EmailLogsProps> = ({ user }) => {
       setLoading(false);
     }, (err) => {
       console.error("Fallo Firestore Snapshot:", err);
-      setError("No se pudo conectar con el historial. Revisa tus índices de Firebase.");
+      setError("Error de permisos o conexión con Firebase. Verifica las reglas de Firestore.");
       setLoading(false);
     });
 
@@ -51,11 +51,16 @@ const EmailLogs: React.FC<EmailLogsProps> = ({ user }) => {
   }, []);
 
   const handleDelete = async (logId: string) => {
-    if (!window.confirm('¿Estás seguro de que deseas eliminar este registro del historial?')) return;
+    if (!window.confirm('¿Eliminar definitivamente este registro del historial?')) return;
+    
+    setDeletingId(logId);
     try {
       await deleteEmailLog(logId);
     } catch (err: any) {
-      alert('Error al eliminar: ' + err.message);
+      console.error("Delete permission error:", err);
+      alert('Error de Permisos: No tienes autorización para borrar en la base de datos. Asegúrate de actualizar las reglas en la consola de Firebase.');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -80,7 +85,7 @@ const EmailLogs: React.FC<EmailLogsProps> = ({ user }) => {
       </div>
 
       {error && (
-        <div className="p-6 bg-rose-50 text-rose-700 rounded-3xl border border-rose-100 font-black text-xs uppercase text-center">
+        <div className="p-6 bg-rose-50 dark:bg-rose-950/20 text-rose-700 dark:text-rose-400 rounded-3xl border border-rose-100 dark:border-rose-900/50 font-black text-xs uppercase text-center shadow-sm">
           <i className="fas fa-exclamation-triangle mr-2"></i> {error}
         </div>
       )}
@@ -148,10 +153,15 @@ const EmailLogs: React.FC<EmailLogsProps> = ({ user }) => {
                       <td className="px-8 py-6 text-right whitespace-nowrap">
                         <button
                           onClick={() => handleDelete(log.id)}
-                          className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-950/20 transition-all opacity-0 group-hover:opacity-100"
+                          disabled={deletingId === log.id}
+                          className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all ${
+                            deletingId === log.id 
+                            ? 'bg-slate-100 text-slate-300' 
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-400 hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-950/20 opacity-0 group-hover:opacity-100'
+                          }`}
                           title="Eliminar Registro"
                         >
-                          <i className="fas fa-trash-alt text-xs"></i>
+                          {deletingId === log.id ? <i className="fas fa-circle-notch fa-spin"></i> : <i className="fas fa-trash-alt text-xs"></i>}
                         </button>
                       </td>
                     )}

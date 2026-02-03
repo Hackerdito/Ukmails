@@ -15,6 +15,26 @@ import {
   serverTimestamp 
 } from "firebase/firestore";
 
+/**
+ * IMPORTANTE: REGLAS DE FIRESTORE REQUERIDAS
+ * -----------------------------------------
+ * Copia esto en la pestaña "Rules" de Firestore en Firebase Console:
+ * 
+ * service cloud.firestore {
+ *   match /databases/{database}/documents {
+ *     match /email_logs/{logId} {
+ *       allow read: if request.auth != null;
+ *       allow create: if request.auth != null;
+ *       allow delete: if request.auth.token.email == "gerito.diseno@gmail.com";
+ *     }
+ *     match /whitelisted_users/{user} {
+ *       allow read: if request.auth != null;
+ *       allow write: if request.auth.token.email == "gerito.diseno@gmail.com";
+ *     }
+ *   }
+ * }
+ */
+
 const firebaseConfig = {
   apiKey: "AIzaSyAJpDIsjfgY70m87mg74y3oaEElkyTvyM0",
   authDomain: "ukmails-45f8c.firebaseapp.com",
@@ -59,7 +79,14 @@ export const removeAuthorizedUser = async (email: string) => {
 };
 
 export const deleteEmailLog = async (logId: string) => {
-  await deleteDoc(doc(db, LOGS_COLLECTION, logId));
+  try {
+    const docRef = doc(db, LOGS_COLLECTION, logId);
+    await deleteDoc(docRef);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Firestore Delete Error:", error);
+    throw error;
+  }
 };
 
 export const saveEmailLog = async (logData: {
