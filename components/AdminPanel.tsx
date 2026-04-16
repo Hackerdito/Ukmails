@@ -1,13 +1,15 @@
 
 import React, { useState, useEffect } from 'react';
-import { db, addAuthorizedUser, removeAuthorizedUser, auth } from '../firebase';
+import { db, addAuthorizedUser, removeAuthorizedUser, auth, createUserWithEmailAndPassword } from '../firebase';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 
 const AdminPanel: React.FC = () => {
   const [users, setUsers] = useState<any[]>([]);
   const [newEmail, setNewEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
   useEffect(() => {
     const q = query(collection(db, 'whitelisted_users'), orderBy('addedAt', 'desc'));
@@ -30,9 +32,21 @@ const AdminPanel: React.FC = () => {
     
     setIsLoading(true);
     setError('');
+    setSuccess('');
     try {
+      // If password is provided, create the user in Firebase Auth
+      if (newPassword) {
+        // We import the secondary app's auth to avoid logging out the current admin
+        const { secondaryAuth } = await import('../firebase');
+        await createUserWithEmailAndPassword(secondaryAuth, newEmail.trim().toLowerCase(), newPassword);
+        await secondaryAuth.signOut();
+      }
+
       await addAuthorizedUser(newEmail.trim().toLowerCase(), auth.currentUser?.email || 'admin');
       setNewEmail('');
+      setNewPassword('');
+      setSuccess('Usuario añadido y autorizado correctamente.');
+      setTimeout(() => setSuccess(''), 3000);
     } catch (err: any) {
       setError('Error al añadir: ' + err.message);
     } finally {
@@ -69,18 +83,31 @@ const AdminPanel: React.FC = () => {
               className="w-full pl-14 pr-6 py-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl focus:ring-2 focus:ring-ukblue dark:focus:ring-indigo-500 outline-none transition-all text-sm font-bold dark:text-white"
               disabled={isLoading}
             />
-            <i className="fas fa-user-plus absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 dark:text-slate-600"></i>
+            <i className="fas fa-envelope absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 dark:text-slate-600"></i>
+          </div>
+          <div className="flex-1 relative">
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="Contraseña (opcional)"
+              className="w-full pl-14 pr-6 py-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl focus:ring-2 focus:ring-ukblue dark:focus:ring-indigo-500 outline-none transition-all text-sm font-bold dark:text-white"
+              disabled={isLoading}
+            />
+            <i className="fas fa-lock absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 dark:text-slate-600"></i>
           </div>
           <button
             type="submit"
             disabled={isLoading || !newEmail}
             className="px-10 py-4 bg-ukblue dark:bg-indigo-600 hover:scale-105 active:scale-95 text-white rounded-2xl text-xs font-black uppercase tracking-[0.2em] transition-all disabled:opacity-50 flex items-center justify-center min-w-[180px] shadow-xl shadow-ukblue/20 dark:shadow-none"
           >
-            {isLoading ? <i className="fas fa-circle-notch fa-spin mr-3"></i> : <i className="fas fa-shield-alt mr-3"></i>}
-            Autorizar
+            {isLoading ? <i className="fas fa-circle-notch fa-spin mr-3"></i> : <i className="fas fa-user-plus mr-3"></i>}
+            Crear / Autorizar
           </button>
         </form>
+        <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">Si dejas la contraseña en blanco, el usuario solo podrá entrar con Google (si su correo es de Google).</p>
         {error && <p className="mt-4 text-[10px] text-rose-500 font-black uppercase tracking-widest">{error}</p>}
+        {success && <p className="mt-4 text-[10px] text-emerald-500 font-black uppercase tracking-widest">{success}</p>}
       </div>
 
       <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">

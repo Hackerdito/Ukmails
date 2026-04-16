@@ -1,6 +1,6 @@
 
 import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
 import { 
   getFirestore, 
   doc, 
@@ -49,6 +49,12 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const googleProvider = new GoogleAuthProvider();
+
+// Secondary app for admin to create users without logging out
+const secondaryApp = initializeApp(firebaseConfig, "SecondaryApp");
+export const secondaryAuth = getAuth(secondaryApp);
+
+export { signInWithEmailAndPassword, createUserWithEmailAndPassword };
 
 export const ADMIN_EMAIL = "gerito.diseno@gmail.com";
 const COLLECTION_NAME = "whitelisted_users";

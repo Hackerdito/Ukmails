@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, signInWithPopup } from 'firebase/auth';
-import { auth, googleProvider, ADMIN_EMAIL, isUserAuthorized } from './firebase';
+import { auth, googleProvider, ADMIN_EMAIL, isUserAuthorized, signInWithEmailAndPassword } from './firebase';
 import { UserProfile } from './types';
 import Layout from './components/Layout';
 import EmailForm from './components/EmailForm';
@@ -13,6 +13,12 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [activeView, setActiveView] = useState<'send' | 'admin' | 'logs'>('send');
   const [loginError, setLoginError] = useState<string | null>(null);
+  
+  // Email/Password state
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
   const [isDarkMode, setIsDarkMode] = useState(() => {
     return localStorage.getItem('theme') === 'dark' || 
            (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches);
@@ -68,8 +74,26 @@ const App: React.FC = () => {
       if (error.code === 'auth/invalid-api-key') {
         setLoginError('Error de configuración: La API Key de Firebase no es válida.');
       } else {
-        setLoginError('Error al iniciar sesión: ' + (error.message || 'Intenta de nuevo.'));
+        setLoginError('Error al iniciar sesión con Google: ' + (error.message || 'Intenta de nuevo.'));
       }
+    }
+  };
+
+  const handleEmailLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !password) {
+      setLoginError('Por favor ingresa correo y contraseña.');
+      return;
+    }
+    setIsLoggingIn(true);
+    setLoginError(null);
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (error: any) {
+      console.error('Email login error:', error);
+      setLoginError('Error al iniciar sesión: ' + (error.message || 'Credenciales incorrectas.'));
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -99,11 +123,47 @@ const App: React.FC = () => {
               <span className="text-ukorange">Uk</span>Mails
             </h1>
           </div>
-          <div className="p-12">
-            <p className="text-center text-slate-500 dark:text-slate-400 text-sm mb-10 font-medium">
+          <div className="p-10">
+            <p className="text-center text-slate-500 dark:text-slate-400 text-sm mb-8 font-medium">
               Acceso exclusivo para personal de <span className="text-ukblue dark:text-indigo-400 font-black">ukuepa.com</span>.
             </p>
             
+            <form onSubmit={handleEmailLogin} className="space-y-4 mb-6">
+              <div>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Correo electrónico"
+                  className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl focus:ring-2 focus:ring-ukblue dark:focus:ring-indigo-500 outline-none transition-all text-sm font-bold dark:text-white"
+                  disabled={isLoggingIn}
+                />
+              </div>
+              <div>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Contraseña"
+                  className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl focus:ring-2 focus:ring-ukblue dark:focus:ring-indigo-500 outline-none transition-all text-sm font-bold dark:text-white"
+                  disabled={isLoggingIn}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={isLoggingIn}
+                className="w-full flex items-center justify-center space-x-4 py-4 px-6 bg-ukblue dark:bg-indigo-600 text-white rounded-2xl hover:bg-ukblue/90 dark:hover:bg-indigo-500 transition-all font-black shadow-sm active:scale-95 disabled:opacity-50"
+              >
+                {isLoggingIn ? <i className="fas fa-circle-notch fa-spin"></i> : <span>Entrar con Correo</span>}
+              </button>
+            </form>
+
+            <div className="relative flex items-center py-2 mb-6">
+              <div className="flex-grow border-t border-slate-200 dark:border-slate-700"></div>
+              <span className="flex-shrink-0 mx-4 text-slate-400 text-xs font-bold uppercase">O</span>
+              <div className="flex-grow border-t border-slate-200 dark:border-slate-700"></div>
+            </div>
+
             <button
               onClick={handleLogin}
               className="w-full flex items-center justify-center space-x-4 py-4 px-6 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl hover:border-ukblue dark:hover:border-indigo-500 transition-all font-black text-slate-700 dark:text-slate-200 shadow-sm active:scale-95 group"
