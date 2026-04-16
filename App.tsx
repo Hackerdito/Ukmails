@@ -125,7 +125,7 @@ const App: React.FC = () => {
           </div>
           <div className="p-10">
             <p className="text-center text-slate-500 dark:text-slate-400 text-sm mb-8 font-medium">
-              Acceso exclusivo para personal de <span className="text-ukblue dark:text-indigo-400 font-black">ukuepa.com</span>.
+              Acceso exclusivo para <span className="text-ukblue dark:text-indigo-400 font-black">personal autorizado</span>.
             </p>
             
             <form onSubmit={handleEmailLogin} className="space-y-4 mb-6">

@@ -79,7 +79,7 @@ const AdminPanel: React.FC = () => {
               type="email"
               value={newEmail}
               onChange={(e) => setNewEmail(e.target.value)}
-              placeholder="colaborador@ukuepa.com"
+              placeholder="usuario@email.com"
               className="w-full pl-14 pr-6 py-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl focus:ring-2 focus:ring-ukblue dark:focus:ring-indigo-500 outline-none transition-all text-sm font-bold dark:text-white"
               disabled={isLoading}
             />
